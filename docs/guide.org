@@ -841,6 +841,17 @@ tool calls, token usage, account onboarding, and managed companion projects.
 client ID; =AUTOLITH_GEMINI_OAUTH_CLIENT_SECRET= supplies a client secret when a
 deployment requires one.
 
+Authenticate Devin with =autolith auth devin=, =/auth devin=, or
+=(auth "devin")=. Autolith runs the Devin CLI browser PKCE flow, listening on
+=127.0.0.1:59653/callback=, and stores the resulting token separately at
+=devin-auth.sexp= under the state root. The provider then speaks Codeium's
+Cascade Connect RPC service directly: it exchanges the session token for a user
+JWT, resolves the =devin/adaptive= router through =AssignModel=, and streams one
+=GetChatMessage= turn with text, thinking, and tool calls. Devin tokens do not
+refresh, so re-run the login when the token expires. The offered models are
+=devin/adaptive=, =devin/swe-1.7=, =devin/claude-opus-5=,
+=devin/claude-fable-5=, and =devin/gpt-5.6-sol=.
+
 #+BEGIN_SRC sh
 autolith auth nous
 #+END_SRC

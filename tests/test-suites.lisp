@@ -120,6 +120,22 @@
   test-plugin-active-configuration
   test-plugin-environment-path)
 
+(define-test-suite devin
+  test-devin-protobuf-roundtrip
+  test-devin-connect-frame
+  test-devin-metadata
+  test-devin-authorization-url
+  test-devin-callback-code
+  test-devin-provider-registration
+  test-devin-user-jwt-request
+  test-devin-read-stream-frame
+  test-devin-chat-request
+  test-devin-parse-chat-response
+  test-devin-tool-name-map
+  test-devin-model-uid
+  test-devin-prompt-source
+  test-devin-item-text)
+
 (define-test-suite mcp-tool
   test-mcp-tools
   test-mcp-reload-registry-rollback

@@ -919,6 +919,11 @@
            #:plugin-status
            #:plugin-system
            #:plugin-version
+           #:devin-error
+           #:devin-get-user-jwt
+           #:devin-oauth-login
+           #:devin-provider
+           #:devin-provider-create
            #:context-contributor-registrations
            #:context-status
            #:define-context-contributor
