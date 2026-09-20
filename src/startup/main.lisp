@@ -722,6 +722,7 @@ dependencies."
                              (null recovery-diagnosis)))))))
     (when authenticate-p
       (user-init-load configuration)
+      (plugin-load-all configuration)
       (main-authenticate (preferences-apply-model-selection
                           (provider-bootstrap-configuration configuration))
                          authentication-selection

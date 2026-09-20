@@ -21,8 +21,7 @@
 
       perSystem = { pkgs, ... }:
         let
-          autolith = import ./nix/package.nix {
-            inherit pkgs;
+          autolith = pkgs.callPackage ./nix/package.nix {
             src = inputs.self;
           };
           upgradeSource = pkgs.runCommand "autolith-upgrade-regression-source" {} ''
@@ -31,8 +30,7 @@
             printf '%s\n' ';; Nix package upgrade regression source.' >> \
               "$out/src/core/time.lisp"
           '';
-          upgradeAutolith = import ./nix/package.nix {
-            inherit pkgs;
+          upgradeAutolith = pkgs.callPackage ./nix/package.nix {
             src = upgradeSource;
           };
           imageIdentity = builtins.baseNameOf (toString autolith.imageIdentity);

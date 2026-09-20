@@ -891,6 +891,34 @@
            #:application-command-tip
            #:define-application-command
            #:main
+           #:configuration-plugins-path
+           #:configuration-plugins-root
+           #:plugin
+           #:plugin-autolith-version
+           #:plugin-compatible-p
+           #:plugin-disable
+           #:plugin-discover
+           #:plugin-enable
+           #:plugin-enabled-p
+           #:plugin-error
+           #:plugin-error-cause
+           #:plugin-error-field
+           #:plugin-error-pathname
+           #:plugin-error-plugin-name
+           #:plugin-find
+           #:plugin-incompatibility
+           #:plugin-list
+           #:plugin-load
+           #:plugin-load-all
+           #:plugin-loaded-p
+           #:plugin-manifest-pathname
+           #:plugin-name
+           #:plugin-platforms
+           #:plugin-report
+           #:plugin-root
+           #:plugin-status
+           #:plugin-system
+           #:plugin-version
            #:context-contributor-registrations
            #:context-status
            #:define-context-contributor

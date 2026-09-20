@@ -322,6 +322,11 @@ opened by the directory's own name."
   (declare (ignore capability))
   nil)
 
+(defmethod platform-host-name ((platform win32-platform))
+  "Return the Windows host family name."
+  (declare (ignore platform))
+  :windows)
+
 (-> win32--process-state (integer) (member :alive :dead :unknown))
 (defun win32--process-state (process-id)
   "Classify PROCESS-ID through OpenProcess and GetExitCodeProcess."

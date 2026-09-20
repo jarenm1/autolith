@@ -1,4 +1,8 @@
-{ pkgs, src }:
+# Autolith's Nix package. PLUGINS is a list of plugin store paths, each a
+# directory holding a plugin.sexp manifest and its entry ASDF system. They are
+# exposed to Autolith through AUTOLITH_PLUGIN_PATH, so a NixOS or home-manager
+# module can declare plugins without writing a user configuration file.
+{ pkgs, src, plugins ? [] }:
 
 let
   lib = pkgs.lib;
@@ -823,6 +827,9 @@ pkgs.writeShellApplication {
     export AUTOLITH_ASDF_CACHE="$asdf_cache"
     export AUTOLITH_NIX_SOURCE_ROOT="${autolithSystem}/"
     export AUTOLITH_INSTALLATION_KIND=nix
+    ${lib.optionalString (plugins != []) ''
+      export AUTOLITH_PLUGIN_PATH="${lib.concatStringsSep ":" plugins}"
+    ''}
 
     # Nix validates image construction at package-build time, but SBCL cores
     # are machine-local mutable state rather than reproducible store outputs.

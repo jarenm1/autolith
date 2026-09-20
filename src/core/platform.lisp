@@ -91,6 +91,13 @@ terminal; and :FORKED-IMAGE-SAVER, saving an image from a forked copy of this
 process. Operations behind an absent capability signal
 PLATFORM-CAPABILITY-UNAVAILABLE."))
 
+(defgeneric platform-host-name (platform)
+  (:documentation
+   "Return the host family name: :LINUX, :MACOS, :WINDOWS, or :BSD.
+
+The name is stable across releases and is the vocabulary plugin manifests use
+to declare the platforms they support."))
+
 (defgeneric platform-process-alive-p (platform process-id)
   (:documentation
    "Return true when PROCESS-ID names a live process.

@@ -469,6 +469,98 @@ The file is ordinary Common Lisp in package =AUTOLITH=, with your full
 privileges. It is not copied into private replay or the pristine recovery
 image.
 
+** Plugins
+
+A plugin is an ordinary ASDF system plus a small manifest. Autolith discovers
+manifests, loads each entry system through ASDF, and lets the plugin register
+itself through the same extension API that =init.lisp= uses. A plugin never
+needs to know whether it was installed from a mutable user directory, a Git
+checkout, or an immutable Nix store path.
+
+Each plugin root holds a =plugin.sexp= manifest and the entry system's =.asd=:
+
+#+BEGIN_SRC lisp
+(:name "hello"
+ :version "0.1.0"
+ :system "autolith-plugin-hello"
+ :autolith-version ">=0.49.0"
+ :platforms (:linux :macos :windows))
+#+END_SRC
+
+=:name=, =:version=, and =:system= are required. =:name= is unique across all
+discovered plugins. =:version= is a dotted numeric version. =:system= names the
+ASDF system whose =.asd= file sits beside the manifest. =:autolith-version= is
+an optional constraint: an operator from =>=, =<==, =>=, =<=, or == followed by
+a dotted numeric version, where a bare version means an exact match.
+=:platforms= is an optional list of =:linux=, =:macos=, =:windows=, or =:bsd=,
+or =:any=; an omitted list supports every platform.
+
+Autolith discovers plugins from three places:
+
+- =${XDG_DATA_HOME:-~/.local/share}/autolith/plugins/=, where each immediate
+  subdirectory is a plugin root.
+- Every path in the =AUTOLITH_PLUGIN_PATH= environment variable, separated by
+  the host path separator. This is how a Nix wrapper or module declares plugin
+  store paths without writing a user configuration file.
+- Every path in =plugins.sexp= under Autolith's user configuration directory,
+  alongside =init.lisp=.
+
+A configured or environment path that directly holds a manifest is one plugin
+root; any other directory contributes its immediate plugin subdirectories. This
+is how an immutable =/nix/store/...= plugin is named.
+
+#+BEGIN_SRC lisp
+(:version 1
+ :paths ("/nix/store/...-autolith-plugin-hello-0.1.0/")
+ :disabled ("noisy-plugin"))
+#+END_SRC
+
+The Nix package accepts a =plugins= list of plugin store paths and exports them
+through =AUTOLITH_PLUGIN_PATH=, so a NixOS or home-manager module can declare
+plugins declaratively:
+
+#+BEGIN_SRC nix
+{ pkgs, ... }:
+{
+  environment.systemPackages = [
+    (pkgs.autolith.override { plugins = [ pkgs.autolith-plugin-hello ]; })
+  ];
+}
+#+END_SRC
+
+Plugins load at startup after =init.lisp=, in discovery order. A malformed
+manifest or a duplicate name stops startup with a structured error, exactly as
+a malformed =mcp.sexp= does. A plugin whose =:autolith-version= or =:platforms=
+does not match this process is discovered but not loaded. =:disabled= names
+plugins that discovery skips; =plugin-enable= and =plugin-disable= update that
+list.
+
+Inspect and manage plugins from the prompt, exactly like any other Lisp
+function. The commands default to the active configuration, so they need no
+arguments:
+
+#+BEGIN_SRC lisp
+(plugin-report)           ; human-readable list of discovered plugins
+(plugin-list)             ; the discovered plugin records
+(plugin-find "hello")     ; one record, or nil
+(plugin-discover)         ; rescan and publish the registry
+(plugin-load plugin)      ; load one entry system through ASDF
+(plugin-load-all)         ; discover and load every enabled plugin
+(plugin-disable "hello")  ; skip this plugin at the next load
+(plugin-enable "hello")
+#+END_SRC
+
+A plugin registers tools, commands, context contributors, providers, or agent
+roles by calling the ordinary Autolith extension functions when its system
+loads, for example =register-application-command=,
+=register-context-contributor=, or =define-context-contributor=. The complete
+worked example lives in =examples/plugins/hello/=; point =:paths= at
+=examples/plugins/= to load it.
+
+  Plugins are ordinary Lisp loaded with your full privileges. Autolith does not
+  sandbox them, and it never writes into a plugin directory, so an immutable
+  Nix store path stays read-only. Only install plugins you trust.
+
 ** Language servers
 
 Install your language server, then configure it in =lsp.sexp= under Autolith's

@@ -623,9 +623,11 @@ model's effort choice to CONFIGURATION--CLONE."
 
 (-> application--load-extension-configuration (configuration) null)
 (defun application--load-extension-configuration (configuration)
-  "Load native MCP and executable user configuration for CONFIGURATION."
+  "Load native MCP, executable user configuration, and plugins for CONFIGURATION."
   (mcp-configuration-load configuration)
   (user-init-load configuration)
+  (setf *plugin-configuration* configuration)
+  (plugin-load-all configuration)
   nil)
 
 (-> application--discard-connection-resources

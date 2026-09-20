@@ -68,6 +68,14 @@
                             :forked-image-saver))
        t))
 
+(defmethod platform-host-name ((platform posix-platform))
+  "Return the POSIX host family name."
+  (declare (ignore platform))
+  #+linux :linux
+  #+darwin :macos
+  #+(or freebsd openbsd netbsd) :bsd
+  #-(or linux darwin freebsd openbsd netbsd) :posix)
+
 (-> posix--target-alive-p (integer) boolean)
 (defun posix--target-alive-p (target)
   "Return true when signal zero reaches kill TARGET or is merely refused."

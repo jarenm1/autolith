@@ -107,6 +107,19 @@
 (define-test-suite directory-configuration
   test-directory-configuration)
 
+(define-test-suite plugin
+  test-plugin-discovery
+  test-plugin-malformed-manifest
+  test-plugin-duplicate-names
+  test-plugin-incompatible-version
+  test-plugin-incompatible-platform
+  test-plugin-version-constraints
+  test-plugin-load-from-user-path
+  test-plugin-load-from-immutable-path
+  test-plugin-enable-disable
+  test-plugin-active-configuration
+  test-plugin-environment-path)
+
 (define-test-suite mcp-tool
   test-mcp-tools
   test-mcp-reload-registry-rollback
