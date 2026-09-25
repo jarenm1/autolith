@@ -13,6 +13,9 @@
     (:name "devin/swe-1.7"
      :description "Devin's fast software-engineering model."
      :context-window 262000)
+    (:name "devin/swe-2"
+     :description "Devin's SWE-2 software-engineering model."
+     :context-window 262000)
     (:name "devin/claude-opus-5"
      :description "Claude Opus through Devin."
      :context-window 1000000)
@@ -21,18 +24,45 @@
      :context-window 1000000)
     (:name "devin/gpt-5.6-sol"
      :description "GPT-5.6 Sol through Devin."
-     :context-window 1000000))
+     :context-window 1000000)
+    (:name "devin/deepseek-v4.1-flash"
+     :description "DeepSeek V4.1 Flash through Devin."
+     :context-window 1048576))
   "The Devin models offered when the CLI model list is unavailable.")
 
 (defparameter *devin-router-models* '("devin/adaptive")
   "Model identifiers the Cascade backend resolves through AssignModel.")
 
-(defparameter *devin-model-uids*
-  '(("devin/swe-1.7" . "swe-1-7")
-    ("devin/claude-opus-5" . "claude-opus-5-low")
-    ("devin/claude-fable-5" . "claude-5-fable-low")
-    ("devin/gpt-5.6-sol" . "gpt-5-6-sol-low"))
-  "Wire model uids for the friendly Devin model names.")
+(defvar *devin-model-variants*
+  (let ((table (make-hash-table :test 'equal)))
+    (dolist (entry '(("devin/swe-1.7" "swe-1-7"
+                      ("medium" . "swe-1-7-medium")
+                      ("high" . "swe-1-7"))
+                     ("devin/swe-2" "swe-2-high"
+                      ("medium" . "swe-2-medium")
+                      ("high" . "swe-2-high"))
+                     ("devin/claude-opus-5" "claude-opus-5-high"
+                      ("medium" . "claude-opus-5-medium")
+                      ("high" . "claude-opus-5-high"))
+                     ("devin/claude-fable-5" "claude-5-fable-high"
+                      ("medium" . "claude-5-fable-medium")
+                      ("high" . "claude-5-fable-high"))
+                     ("devin/gpt-5.6-sol" "gpt-5-6-sol-high"
+                      ("medium" . "gpt-5-6-sol-medium")
+                      ("high" . "gpt-5-6-sol-high"))
+                     ("devin/deepseek-v4.1-flash" "deepseek-v4-1-flash-high"
+                      ("high" . "deepseek-v4-1-flash-high")
+                      ("max" . "deepseek-v4-1-flash-max"))))
+      (destructuring-bind (name default &rest efforts) entry
+        (setf (gethash name table)
+              (list :default default :efforts efforts))))
+    table)
+  "The known Devin wire variant uids keyed by registered model name.
+
+Each value is a property list with :DEFAULT holding the preferred wire uid and
+:EFFORTS holding an association list from Autolith reasoning effort names to
+variant uids. Live model discovery replaces these seeds with the catalog the
+account may actually select.")
 
 (defclass devin-provider
     (session-preserving-provider-mixin subscription-provider)
@@ -69,6 +99,59 @@
         (setf (devin-provider-user-jwt provider)
               (devin-get-user-jwt token :base-url (devin-provider-endpoint provider))))))
 
+(-> devin--variant-suffix-effort (string string) (option string))
+(defun devin--variant-suffix-effort (family-uid model-uid)
+  "Return the effort-level suffix MODEL-UID adds to FAMILY-UID, or NIL.
+
+Family uids use dots where variant uids use dashes, for example family
+\"deepseek-v4.1-flash\" carrying variant \"deepseek-v4-1-flash-high\". A bare
+family uid is the family's default variant; the Devin CLI treats a variant
+with no recognized suffix as the high effort."
+  (let* ((normalized (substitute #\- #\. family-uid))
+         (prefix (concatenate 'string normalized "-")))
+    (cond
+      ((uiop:string-prefix-p prefix model-uid)
+       (subseq model-uid (length prefix)))
+      ((string= normalized model-uid) "high")
+      (t nil))))
+
+(-> devin--install-model-variants (list) null)
+(defun devin--install-model-variants (configs)
+  "Fold discovered CliModelConfig plists into *DEVIN-MODEL-VARIANTS*."
+  (let ((families (make-hash-table :test 'equal)))
+    (dolist (config configs)
+      (let ((family-uid (or (getf config ':family-uid)
+                            (getf config ':model-uid))))
+        (push config (gethash family-uid families))))
+    (maphash
+     (lambda (family-uid members)
+       (let ((name (concatenate 'string "devin/" family-uid))
+             (efforts nil))
+         (dolist (member members)
+           (let* ((uid (getf member ':model-uid))
+                  (suffix (devin--variant-suffix-effort family-uid uid)))
+             (when suffix
+               (push (cons suffix uid) efforts))))
+         (let ((default
+                 (or (some (lambda (preferred)
+                             (cdr (assoc preferred efforts :test #'string=)))
+                           '("high" "medium" "max" "xhigh" "low" "minimal"
+                             "none" ""))
+                     (and members (getf (first members) ':model-uid)))))
+           (when default
+             (setf (gethash name *devin-model-variants*)
+                   (list :default default :efforts efforts))))))
+     families))
+  nil)
+
+(-> devin--model-variant-uid (string string) (option string))
+(defun devin--model-variant-uid (model effort)
+  "Return MODEL's wire variant uid for EFFORT, or NIL when unknown."
+  (let ((variants (gethash model *devin-model-variants*)))
+    (when variants
+      (or (cdr (assoc effort (getf variants ':efforts) :test #'string=))
+          (getf variants ':default)))))
+
 (-> devin-provider--model-uid (devin-provider string) (values string (option string)))
 (defun devin-provider--model-uid (provider model)
   "Return the wire model uid and optional assignment JWT for MODEL."
@@ -79,8 +162,14 @@
                             (devin-provider--user-jwt provider credentials)
                             (subseq model (length "devin/"))
                             :base-url (devin-provider-endpoint provider)))
-      (values (or (cdr (assoc model *devin-model-uids* :test #'string=))
-                  model)
+      (values (or (devin--model-variant-uid
+                   model
+                   (or (configuration-reasoning-effort
+                        (provider-configuration provider))
+                       ""))
+                  (if (uiop:string-prefix-p "devin/" model)
+                          (subseq model (length "devin/"))
+                          model))
               nil)))
 
 (-> devin--prompt-source (string) integer)
@@ -426,11 +515,63 @@ TOOL-CALLS maps call ids to (name args-stream) plists and carries a
   (declare (ignore force-refresh goal-context compaction-p))
   (devin--stream-turn provider conversation tool-namespaces event-callback))
 
+
+;;;; -- Model Discovery --
+
+(-> devin--catalog-model-specs (list) list)
+(defun devin--catalog-model-specs (configs)
+  "Group CliModelConfig plists into one provider model spec per family.
+
+Each spec is named devin/<family-uid>, carries the family's largest context
+window, and lists the supported Autolith reasoning efforts the family's variant
+uids cover. The variants land in *DEVIN-MODEL-VARIANTS* for wire resolution."
+  (let ((families (make-hash-table :test 'equal))
+        (order nil))
+    (dolist (config configs)
+      (let ((family-uid (or (getf config ':family-uid)
+                            (getf config ':model-uid))))
+        (unless (gethash family-uid families)
+          (push family-uid order))
+        (push config (gethash family-uid families))))
+    (devin--install-model-variants configs)
+    (loop for family-uid in (nreverse order)
+          for members = (gethash family-uid families)
+          for name = (concatenate 'string "devin/" family-uid)
+          for variants = (gethash name *devin-model-variants*)
+          for family-label = (or (some (lambda (member)
+                                         (getf member ':family-label))
+                                       members)
+                                 family-uid)
+          for efforts = (remove-if-not
+                         (lambda (suffix)
+                           (member suffix *supported-reasoning-efforts*
+                                   :test #'string=))
+                         (mapcar #'car (getf variants ':efforts)))
+          when variants
+            collect (list :name name
+                          :description
+                          (format nil "~A through Devin." family-label)
+                          :context-window
+                          (or (loop for member in members
+                                    maximize (or (getf member ':context-window)
+                                                 0)
+                                      into ceiling
+                                    finally (return
+                                              (and (plusp ceiling) ceiling)))
+                              *default-context-window*)
+                          :reasoning-efforts (or efforts '("high"))))))
+
 (-> devin-model-discovery (configuration) list)
 (defun devin-model-discovery (configuration)
-  "Return the Devin models for CONFIGURATION, falling back to the static list."
-  (declare (ignore configuration))
-  (mapcar (lambda (spec) (getf spec :name)) *devin-models*))
+  "Return the Devin CLI model catalog CONFIGURATION's credential may select."
+  (let* ((provider (devin-provider-create configuration))
+         (manager (provider-credential-manager provider))
+         (credentials (credential-manager-credentials manager))
+         (configs (devin-cli-model-configs
+                   (oauth-credentials-access-token credentials)
+                   :base-url (devin-provider-endpoint provider))))
+    (devin--catalog-model-specs configs)))
+
 
 (-> devin-authenticate (devin-provider &key (:stream stream) (:open-browser-p boolean)) string)
 (defun devin-authenticate (provider &key (stream *standard-output*) (open-browser-p t))

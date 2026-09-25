@@ -278,3 +278,98 @@ content type; the five-octet envelope applies only to streaming calls."
       (devin--fail ':assignment
                    "Devin AssignModel returned no model uid and assignment JWT."))
     (values model-uid assignment-jwt)))
+
+
+;;;; -- Model Catalog --
+
+(-> devin--cli-model-config ((vector (unsigned-byte 8))) list)
+(defun devin--cli-model-config (octets)
+  "Parse one CliModelConfig message into a property list.
+
+The observed schema carries the display label in field 1, the context window in
+field 18, the CLI model uid in field 22, a nested model descriptor in field 23
+whose field 17 repeats the wire uid and whose field 23 holds the family uid,
+and a nested family record in field 30 whose field 1 holds the family label."
+  (let ((reader (protobuf-reader-create octets))
+        (label nil)
+        (context-window nil)
+        (model-uid nil)
+        (family-uid nil)
+        (family-label nil)
+        (wire-uid nil))
+    (loop until (protobuf-reader-exhausted-p reader)
+          do (multiple-value-bind (field wire-type) (protobuf-read-tag reader)
+               (cond
+                 ((and (= field 1)
+                       (= wire-type +protobuf-wire-length-delimited+))
+                  (setf label (protobuf-read-string reader)))
+                 ((and (= field 18) (= wire-type +protobuf-wire-varint+))
+                  (setf context-window (protobuf-read-varint reader)))
+                 ((and (= field 22)
+                       (= wire-type +protobuf-wire-length-delimited+))
+                  (setf model-uid (protobuf-read-string reader)))
+                 ((and (= field 23)
+                       (= wire-type +protobuf-wire-length-delimited+))
+                  (let ((nested (protobuf-reader-create
+                                 (protobuf-read-length-delimited reader))))
+                    (loop until (protobuf-reader-exhausted-p nested)
+                          do (multiple-value-bind (inner-field inner-wire)
+                                 (protobuf-read-tag nested)
+                               (cond
+                                 ((and (= inner-field 17)
+                                       (= inner-wire
+                                          +protobuf-wire-length-delimited+))
+                                  (setf wire-uid (protobuf-read-string nested)))
+                                 ((and (= inner-field 23)
+                                       (= inner-wire
+                                          +protobuf-wire-length-delimited+))
+                                  (setf family-uid
+                                        (protobuf-read-string nested)))
+                                 (t (protobuf-skip-field nested
+                                                         inner-wire)))))))
+                 ((and (= field 30)
+                       (= wire-type +protobuf-wire-length-delimited+))
+                  (let ((nested (protobuf-reader-create
+                                 (protobuf-read-length-delimited reader))))
+                    (loop until (protobuf-reader-exhausted-p nested)
+                          do (multiple-value-bind (inner-field inner-wire)
+                                 (protobuf-read-tag nested)
+                               (if (and (= inner-field 1)
+                                        (= inner-wire
+                                           +protobuf-wire-length-delimited+))
+                                       (setf family-label
+                                             (protobuf-read-string nested))
+                                       (protobuf-skip-field nested
+                                                            inner-wire))))))
+                 (t (protobuf-skip-field reader wire-type)))))
+    (list :label label
+          :model-uid (or model-uid wire-uid)
+          :context-window context-window
+          :family-uid family-uid
+          :family-label family-label)))
+
+(-> devin-cli-model-configs (string &key (:base-url string)) list)
+(defun devin-cli-model-configs (token &key (base-url *devin-base-url*))
+  "Return the CLI model catalog the session TOKEN may select.
+
+Each entry is a property list with :LABEL, :MODEL-UID, :CONTEXT-WINDOW,
+:FAMILY-UID, and :FAMILY-LABEL keys."
+  (let* ((request (let ((buffer (protobuf--writer)))
+                    (protobuf-write-message buffer 1 (devin--metadata-octets token))
+                    buffer))
+         (payload (devin--connect-unary-at base-url
+                                           *devin-cli-model-configs-path*
+                                           request))
+         (reader (protobuf-reader-create payload))
+         (configs nil))
+    (loop until (protobuf-reader-exhausted-p reader)
+          do (multiple-value-bind (field wire-type) (protobuf-read-tag reader)
+               (if (and (= field 1)
+                        (= wire-type +protobuf-wire-length-delimited+))
+                       (push (devin--cli-model-config
+                              (protobuf-read-length-delimited reader))
+                             configs)
+                       (protobuf-skip-field reader wire-type))))
+    (remove-if-not (lambda (config)
+                     (non-empty-string-p (getf config ':model-uid)))
+                   (nreverse configs))))

@@ -336,7 +336,7 @@
                           "swe-1-7")
                  "the swe model maps to its wire uid")
     (test-assert (string= (devin-provider--model-uid provider "devin/gpt-5.6-sol")
-                          "gpt-5-6-sol-low")
+                          "gpt-5-6-sol-high")
                  "the gpt model maps to its wire uid")
     (test-assert (string= (devin-provider--model-uid provider "unknown-model")
                           "unknown-model")
